@@ -3,7 +3,7 @@
 apiVersion: operator.victoriametrics.com/v1
 kind: VLSingle
 metadata:
-   name: {{ include "w7panel-metrics.fullname" . }}-vlsingle
+   name: {{ include "w7panel-metrics.fullname" . }}
    labels:
          {{- include "w7panel-metrics.labels" . | nindent 4 }}
 spec:
