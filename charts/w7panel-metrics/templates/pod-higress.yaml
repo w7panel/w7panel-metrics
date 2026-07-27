@@ -1,0 +1,24 @@
+{{- if .Values.higressMetrics.enabled }}
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: {{ include "w7panel-metrics.fullname" . }}-higress
+  labels:
+    {{- include "w7panel-metrics.labels" . | nindent 4 }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.higressMetrics.namespace }}
+  selector:
+    matchLabels:
+      app: higress-gateway
+  podMetricsEndpoints:
+    - port: istio-prom
+      path: /stats/prometheus
+      interval: 30s
+      scrapeTimeout: 20s
+      metricRelabelConfigs:
+        - action: keep
+          source_labels: [__name__]
+          regex: 'envoy_cluster_(upstream_rq(_total|_[0-9]{3}|_time(_bucket|_sum|_count))|upstream_cx_(rx|tx)_bytes_total)|envoy_http_downstream_rq_total'
+{{- end }}

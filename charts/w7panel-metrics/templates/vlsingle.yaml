@@ -8,7 +8,6 @@ metadata:
          {{- include "w7panel-metrics.labels" . | nindent 4 }}
 spec:
     retentionPeriod: {{ .Values.victoriaLogs.retentionPeriod | quote }}
-    removePvcAfterDelete: {{ .Values.victoriaLogs.removePvcAfterDelete }}
     storage:
 {{ if $storageClassName }}
         storageClassName: {{ $storageClassName | quote }}

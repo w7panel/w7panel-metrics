@@ -1,0 +1,157 @@
+{{- if and .Values.victoriaLogs.enabled .Values.higressAccessLogs.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "w7panel-metrics.fullname" . }}-higress-logs
+  labels:
+    {{- include "w7panel-metrics.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "w7panel-metrics.fullname" . }}-higress-logs
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "nodes", "pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "w7panel-metrics.fullname" . }}-higress-logs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "w7panel-metrics.fullname" . }}-higress-logs
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "w7panel-metrics.fullname" . }}-higress-logs
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "w7panel-metrics.fullname" . }}-higress-logs
+data:
+  vector.yaml: |
+    data_dir: /vector-data-dir
+    sources:
+      kubernetes_logs:
+        type: kubernetes_logs
+        extra_label_selector: app=higress-gateway
+        self_node_name: ${VECTOR_SELF_NODE_NAME}
+    transforms:
+      only_gateway:
+        type: filter
+        inputs: [kubernetes_logs]
+        condition: '.kubernetes.container_name == "higress-gateway"'
+      normalize:
+        type: remap
+        inputs: [only_gateway]
+        drop_on_error: true
+        source: |
+          parsed = parse_json!(string!(.message))
+          . = parsed
+          .log_type = "higress_access"
+          .path = split(string!(.path), "?")[0]
+          route = split(string(.route_name) ?? "", "/")
+          .route_namespace = if length(route) == 2 { route[0] } else { "" }
+          .route = if length(route) == 2 { route[1] } else { "" }
+          cluster = parse_regex(string(.upstream_cluster) ?? "", r'^outbound\|(?P<port>[^|]+)\|\|(?P<service>[^.]+)\.(?P<namespace>[^.]+)\.svc') ?? {}
+          .upstream_port = if exists(cluster.port) { cluster.port } else { "" }
+          .upstream_service = if exists(cluster.service) { cluster.service } else { "" }
+          .upstream_namespace = if exists(cluster.namespace) { cluster.namespace } else { "" }
+          .upstream_ip = split(string(.upstream_host) ?? "", ":")[0]
+          .duration_ms = to_int(.duration) ?? 0
+          .bytes_received = to_int(.bytes_received) ?? 0
+          .bytes_sent = to_int(.bytes_sent) ?? 0
+          .status_code = to_int(.response_code) ?? 0
+          del(.duration)
+          del(.response_code)
+          del(.request_id)
+          del(.trace_id)
+          del(.user_agent)
+          del(.x_forwarded_for)
+          del(.downstream_local_address)
+          del(.downstream_remote_address)
+          del(.upstream_local_address)
+          del(.ai_log)
+          del(.istio_policy_status)
+    sinks:
+      victoria_logs:
+        type: http
+        inputs: [normalize]
+        uri: http://vlsingle-{{ include "w7panel-metrics.fullname" . }}:9428/insert/jsonline?_stream_fields=log_type,route_namespace,authority&_time_field=start_time
+        method: post
+        framing:
+          method: newline_delimited
+        encoding:
+          codec: json
+        request:
+          headers:
+            Content-Type: application/stream+json
+        healthcheck:
+          enabled: false
+    tests:
+      - name: sanitize_higress_access_log
+        inputs:
+          - insert_at: normalize
+            type: log
+            log_fields:
+              message: '{"authority":"demo.example.com","path":"/api/orders?ticket=secret","route_name":"default/demo","upstream_cluster":"outbound|8080||demo.default.svc.cluster.local","upstream_host":"10.42.0.8:8080","duration":"12","bytes_received":"10","bytes_sent":"20","response_code":"200","request_id":"sensitive"}'
+        outputs:
+          - extract_from: normalize
+            conditions:
+              - type: vrl
+                source: '.path == "/api/orders" && .route_namespace == "default" && .upstream_service == "demo" && !exists(.request_id)'
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "w7panel-metrics.fullname" . }}-higress-logs
+  labels:
+    {{- include "w7panel-metrics.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "w7panel-metrics.fullname" . }}-higress-logs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "w7panel-metrics.fullname" . }}-higress-logs
+    spec:
+      serviceAccountName: {{ include "w7panel-metrics.fullname" . }}-higress-logs
+      containers:
+        - name: vector
+          image: "{{ .Values.higressAccessLogs.image.repository }}:{{ .Values.higressAccessLogs.image.tag }}"
+          imagePullPolicy: {{ .Values.higressAccessLogs.image.pullPolicy }}
+          args: ["--config", "/etc/vector/vector.yaml"]
+          env:
+            - name: VECTOR_SELF_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            {{- toYaml .Values.higressAccessLogs.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/vector
+              readOnly: true
+            - name: data
+              mountPath: /vector-data-dir
+            - name: pod-logs
+              mountPath: /var/log/pods
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "w7panel-metrics.fullname" . }}-higress-logs
+        - name: data
+          hostPath:
+            path: /var/lib/w7panel-metrics/vector
+            type: DirectoryOrCreate
+        - name: pod-logs
+          hostPath:
+            path: /var/log/pods
+            type: Directory
+{{- end }}
