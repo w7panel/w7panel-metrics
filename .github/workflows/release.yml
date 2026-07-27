@@ -31,7 +31,7 @@ jobs:
         run: zpk login --username=w7admin --password=$PASSWORD --host=zpk.w7.cc
 
       - name: Package Helm chart
-        run: helm package ./charts/w7panel-metrics --version "$GITHUB_REF_NAME"
+        run: helm package ./charts/w7panel-metrics --version "$GITHUB_REF_NAME" --app-version "$GITHUB_REF_NAME"
 
       - name: Publish Helm chart
         run: |
