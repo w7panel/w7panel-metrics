@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "1.0.*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Package and publish Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install zpk
+        run: |
+          wget https://gh-proxy.org/https://github.com/w7panel/w7panel-zpk/releases/download/latest/w7-zpk_linux_amd64 -O /tmp/zpk
+          chmod +x /tmp/zpk
+          sudo mv /tmp/zpk /usr/local/bin/zpk
+
+      - name: Log in to zpk
+        env:
+          PASSWORD: ${{ secrets.ZPK_PASSWORD }}
+        run: zpk login --username=w7admin --password="$PASSWORD" --host=zpk.w7.cc
+
+      - name: Package Helm chart
+        run: helm package ./charts/w7panel-metrics --version "$GITHUB_REF_NAME"
+
+      - name: Publish Helm chart
+        run: |
+          chart_package="w7panel-metrics-${GITHUB_REF_NAME}.tgz"
+          test -f "$chart_package"
+          zpk use --name=w7panel-metrics
+          zpk attach add --path="./$chart_package" --type=helm
+          zpk push
