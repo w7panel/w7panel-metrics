@@ -21,14 +21,14 @@ jobs:
 
       - name: Install zpk
         run: |
-          wget https://gh-proxy.org/https://github.com/w7panel/w7panel-zpk/releases/download/latest/w7-zpk_linux_amd64 -O /tmp/zpk
+          wget https://github.com/w7panel/w7panel-zpk/releases/download/latest/w7-zpk_linux_amd64 -O /tmp/zpk
           chmod +x /tmp/zpk
           sudo mv /tmp/zpk /usr/local/bin/zpk
 
       - name: Log in to zpk
         env:
           PASSWORD: ${{ secrets.ZPK_PASSWORD }}
-        run: zpk login --username=w7admin --password="$PASSWORD" --host=zpk.w7.cc
+        run: zpk login --username=w7admin --password=$PASSWORD --host=zpk.w7.cc
 
       - name: Package Helm chart
         run: helm package ./charts/w7panel-metrics --version "$GITHUB_REF_NAME"
