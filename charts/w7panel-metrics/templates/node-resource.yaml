@@ -29,9 +29,8 @@ spec:
         #     replacement: kubelet-resource
         #     targetLabel: job
     scheme: https
-    scrapeTimeout: 5s
+    scrapeTimeout: 15s
     selector: {}
     tlsConfig:
         caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         insecureSkipVerify: true
-
