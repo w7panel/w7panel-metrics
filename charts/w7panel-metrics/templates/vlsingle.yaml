@@ -7,6 +7,9 @@ metadata:
    labels:
          {{- include "w7panel-metrics.labels" . | nindent 4 }}
 spec:
+    managedMetadata:
+        labels:
+            w7.cc/group-name: {{ include "w7panel-metrics.fullname" . }}
     retentionPeriod: {{ .Values.victoriaLogs.retentionPeriod | quote }}
     storage:
 {{ if $storageClassName }}
