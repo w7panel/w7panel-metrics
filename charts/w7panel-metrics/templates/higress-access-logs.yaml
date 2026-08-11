@@ -132,6 +132,10 @@ spec:
       app.kubernetes.io/name: {{ include "w7panel-metrics.fullname" . }}-higress-logs
   template:
     metadata:
+      annotations:
+        # Vector only reads its config at startup. Make every Helm revision
+        # replace the Pod so a ConfigMap update is applied immediately.
+        w7panel.io/config-revision: {{ .Release.Revision | quote }}
       labels:
         app.kubernetes.io/name: {{ include "w7panel-metrics.fullname" . }}-higress-logs
     spec:
