@@ -50,7 +50,11 @@ data:
         inputs: [only_gateway]
         drop_on_error: true
         source: |
-          parsed = parse_json!(string!(.message))
+          # Docker adds "\\(" and "\\)" to its User-Agent. Those are not
+          # valid JSON escape sequences, so normalize only invalid escapes
+          # before parsing and keep valid JSON escapes untouched.
+          message = replace(string!(.message), r'\\([^"\\/bfnrtu])', "$${1}")
+          parsed = parse_json!(message)
           . = parsed
           .log_type = "higress_access"
           .path = split(string!(.path), "?")[0]
@@ -104,6 +108,17 @@ data:
             conditions:
               - type: vrl
                 source: '.path == "/api/orders" && .route_namespace == "default" && .upstream_service == "demo" && !exists(.request_id)'
+      - name: accepts_docker_user_agent_with_invalid_json_escape
+        inputs:
+          - insert_at: normalize
+            type: log
+            log_fields:
+              message: '{"authority":"reg.example.com","path":"/v2/nginx/blobs/sha256:abc","route_name":"default/registry","upstream_cluster":"outbound|8000||registry.default.svc.cluster.local","upstream_host":"10.42.0.9:8000","duration":"81","bytes_received":"99","bytes_sent":"33328253","response_code":"200","user_agent":"docker/29.3.1 UpstreamClient(Docker-Client/29.3.1 \\(linux\\))"}'
+        outputs:
+          - extract_from: normalize
+            conditions:
+              - type: vrl
+                source: '.path == "/v2/nginx/blobs/sha256:abc" && .bytes_sent == 33328253 && !exists(.user_agent)'
 ---
 apiVersion: apps/v1
 kind: DaemonSet
