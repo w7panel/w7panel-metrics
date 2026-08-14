@@ -12,7 +12,16 @@ metadata:
   name: {{ include "w7panel-metrics.fullname" . }}-higress-logs
 rules:
   - apiGroups: [""]
-    resources: ["namespaces", "nodes", "pods"]
+    resources: ["namespaces", "nodes", "pods", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -35,6 +44,18 @@ metadata:
 data:
   vector.yaml: |
     data_dir: /vector-data-dir
+    enrichment_tables:
+      workloads:
+        type: file
+        file:
+          path: /etc/vector/workloads/workloads.csv
+        encoding:
+          type: csv
+        schema:
+          upstream_ip: string
+          workload_kind: string
+          workload_name: string
+          workload_namespace: string
     sources:
       kubernetes_logs:
         type: kubernetes_logs
@@ -66,6 +87,10 @@ data:
           .upstream_service = if exists(cluster.service) { cluster.service } else { "" }
           .upstream_namespace = if exists(cluster.namespace) { cluster.namespace } else { "" }
           .upstream_ip = split(string(.upstream_host) ?? "", ":")[0]
+          workload = get_enrichment_table_record("workloads", {"upstream_ip": .upstream_ip}) ?? {}
+          .workload_kind = string(workload.workload_kind) ?? ""
+          .workload_name = string(workload.workload_name) ?? ""
+          .workload_namespace = string(workload.workload_namespace) ?? ""
           .duration_ms = to_int(.duration) ?? 0
           .bytes_received = to_int(.bytes_received) ?? 0
           .bytes_sent = to_int(.bytes_sent) ?? 0
@@ -161,6 +186,9 @@ spec:
             - name: pod-logs
               mountPath: /var/log/pods
               readOnly: true
+            - name: workloads
+              mountPath: /etc/vector/workloads
+              readOnly: true
       volumes:
         - name: config
           configMap:
@@ -173,4 +201,50 @@ spec:
           hostPath:
             path: /var/log/pods
             type: Directory
+        - name: workloads
+          configMap:
+            name: {{ include "w7panel-metrics.fullname" . }}-traffic-workloads
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "w7panel-metrics.fullname" . }}-traffic-workloads
+data:
+  workloads.csv: |
+    upstream_ip,workload_kind,workload_name,workload_namespace
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "w7panel-metrics.fullname" . }}-traffic-workloads
+  labels:
+    {{- include "w7panel-metrics.labels" . | nindent 4 }}
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: {{ include "w7panel-metrics.fullname" . }}-higress-logs
+          restartPolicy: OnFailure
+          containers:
+            - name: resolve-workloads
+              image: "ccr.ccs.tencentyun.com/afan-public/kubectl:latest"
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  output=/tmp/workloads.csv
+                  tab=$(printf '\t')
+                  printf 'upstream_ip,workload_kind,workload_name,workload_namespace\n' > "$output"
+                  kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.podIP}{"\t"}{.metadata.ownerReferences[0].kind}{"\t"}{.metadata.ownerReferences[0].name}{"\n"}{end}' |
+                  while IFS="$tab" read -r namespace pod ip kind name; do
+                    [ -n "$ip" ] || continue
+                    case "$kind" in
+                      ReplicaSet) owner=$(kubectl -n "$namespace" get replicaset "$name" -o jsonpath='{.metadata.ownerReferences[0].kind}{"\t"}{.metadata.ownerReferences[0].name}' 2>/dev/null || true); [ -n "$owner" ] && { kind=${owner%%"$tab"*}; name=${owner#*"$tab"}; } ;;
+                      Job) owner=$(kubectl -n "$namespace" get job "$name" -o jsonpath='{.metadata.ownerReferences[0].kind}{"\t"}{.metadata.ownerReferences[0].name}' 2>/dev/null || true); [ -n "$owner" ] && { kind=${owner%%"$tab"*}; name=${owner#*"$tab"}; } ;;
+                    esac
+                    case "$kind" in Deployment|StatefulSet|DaemonSet|CronJob) printf '%s,%s,%s,%s\n' "$ip" "$kind" "$name" "$namespace" >> "$output" ;; esac
+                  done
+                  kubectl -n {{ .Release.Namespace }} create configmap {{ include "w7panel-metrics.fullname" . }}-traffic-workloads --from-file=workloads.csv="$output" --dry-run=client -o yaml | kubectl apply -f -
 {{- end }}
