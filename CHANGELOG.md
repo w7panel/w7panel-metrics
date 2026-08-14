@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 流量工作负载快照增加上游 Pod 名称并随日志持久化。Apps 抽屉可按当时的 Pod 名称列出和搜索流量，即使该 Pod 后续已销毁或 IP 被复用，也不会依赖查询时的 Pod IP 反查。
+
 - Higress Access Log 现会在入库前按上游 Pod IP 写入顶层 Kubernetes 工作负载身份，支持 Deployment、StatefulSet、DaemonSet、Job 和 CronJob。此前流量排行只能依赖 Pod/IP，Pod 重建或销毁后会产生无法稳定归属的历史数据；现在由周期性 owner 快照供 Vector 丰富日志字段，供 Apps 聚合使用。
 
 - 修复 Higress Access Log 采集对 Docker User-Agent 中 `\\(`、`\\)` 等非法 JSON 转义的兼容处理。此前 `docker pull` 的 Blob 下载日志会在 Vector `parse_json!` 阶段失败，并因 `drop_on_error` 被丢弃，导致统计分析的流量明显偏小；现在会仅移除非法转义的反斜杠，保留合法 JSON 转义，使 Blob 下行字节能够写入 VictoriaLogs 并参与统计。
