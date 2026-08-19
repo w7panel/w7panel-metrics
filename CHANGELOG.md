@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- 修复工作负载 Service 映射 CSV 为空的问题；现在从已生成的 Pod-to-workload CSV 导出唯一的服务别名，确保无上游 IP 的请求能使用 Service fallback 归属 Apps。
+
+- 修复上游连接未建立时 `upstream_ip` 为 `-` 导致 Apps 无数据的问题。现在按 `upstream_service` 和命名空间回退匹配工作负载，使 404、路由拒绝等访问也能归属到对应 App。
+
 - 修复 Higress Log Vector 配置中 enrichment table 的 CSV `encoding` 层级错误。此前 `w7panel-metrics` 升级后 Vector 报 `missing field encoding in enrichment_tables.workloads` 并导致 higress-log DaemonSet 无法启动；现将编码配置放入 file table 定义内部，恢复采集器启动。
 
 - 流量工作负载快照增加上游 Pod 名称并随日志持久化。Apps 抽屉可按当时的 Pod 名称列出和搜索流量，即使该 Pod 后续已销毁或 IP 被复用，也不会依赖查询时的 Pod IP 反查。

@@ -57,6 +57,18 @@ data:
           workload_kind: string
           workload_name: string
           workload_namespace: string
+      services:
+        type: file
+        file:
+          path: /etc/vector/workloads/services.csv
+          encoding:
+            type: csv
+        schema:
+          upstream_service: string
+          upstream_namespace: string
+          workload_kind: string
+          workload_name: string
+          workload_namespace: string
     sources:
       kubernetes_logs:
         type: kubernetes_logs
@@ -89,6 +101,9 @@ data:
           .upstream_namespace = if exists(cluster.namespace) { cluster.namespace } else { "" }
           .upstream_ip = split(string(.upstream_host) ?? "", ":")[0]
           workload = get_enrichment_table_record("workloads", {"upstream_ip": .upstream_ip}) ?? {}
+          if (string(workload.workload_name) ?? "") == "" {
+            workload = get_enrichment_table_record("services", {"upstream_service": .upstream_service, "upstream_namespace": .upstream_namespace}) ?? {}
+          }
           .upstream_pod_name = string(workload.upstream_pod_name) ?? ""
           .workload_kind = string(workload.workload_kind) ?? ""
           .workload_name = string(workload.workload_name) ?? ""
@@ -214,6 +229,8 @@ metadata:
 data:
   workloads.csv: |
     upstream_ip,upstream_pod_name,workload_kind,workload_name,workload_namespace
+  services.csv: |
+    upstream_service,upstream_namespace,workload_kind,workload_name,workload_namespace
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -237,8 +254,10 @@ spec:
               args:
                 - |
                   output=/tmp/workloads.csv
+                  services=/tmp/services.csv
                   tab=$(printf '\t')
                   printf 'upstream_ip,upstream_pod_name,workload_kind,workload_name,workload_namespace\n' > "$output"
+                  printf 'upstream_service,upstream_namespace,workload_kind,workload_name,workload_namespace\n' > "$services"
                   kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.podIP}{"\t"}{.metadata.ownerReferences[0].kind}{"\t"}{.metadata.ownerReferences[0].name}{"\n"}{end}' |
                   while IFS="$tab" read -r namespace pod ip kind name; do
                     [ -n "$ip" ] || continue
@@ -246,7 +265,11 @@ spec:
                       ReplicaSet) owner=$(kubectl -n "$namespace" get replicaset "$name" -o jsonpath='{.metadata.ownerReferences[0].kind}{"\t"}{.metadata.ownerReferences[0].name}' 2>/dev/null || true); [ -n "$owner" ] && { kind=${owner%%"$tab"*}; name=${owner#*"$tab"}; } ;;
                       Job) owner=$(kubectl -n "$namespace" get job "$name" -o jsonpath='{.metadata.ownerReferences[0].kind}{"\t"}{.metadata.ownerReferences[0].name}' 2>/dev/null || true); [ -n "$owner" ] && { kind=${owner%%"$tab"*}; name=${owner#*"$tab"}; } ;;
                     esac
-                    case "$kind" in Deployment|StatefulSet|DaemonSet|CronJob) printf '%s,%s,%s,%s,%s\n' "$ip" "$pod" "$kind" "$name" "$namespace" >> "$output" ;; esac
+                    case "$kind" in Deployment|StatefulSet|DaemonSet|CronJob)
+                      printf '%s,%s,%s,%s,%s\n' "$ip" "$pod" "$kind" "$name" "$namespace" >> "$output"
+                      ;;
+                    esac
                   done
-                  kubectl -n {{ .Release.Namespace }} create configmap {{ include "w7panel-metrics.fullname" . }}-traffic-workloads --from-file=workloads.csv="$output" --dry-run=client -o yaml | kubectl apply -f -
+                  awk -F, 'NR > 1 { print $4 "," $5 "," $3 "," $4 "," $5 }' "$output" | sort -u >> "$services"
+                  kubectl -n {{ .Release.Namespace }} create configmap {{ include "w7panel-metrics.fullname" . }}-traffic-workloads --from-file=workloads.csv="$output" --from-file=services.csv="$services" --dry-run=client -o yaml | kubectl apply -f -
 {{- end }}
