@@ -49,8 +49,8 @@ data:
         type: file
         file:
           path: /etc/vector/workloads/workloads.csv
-        encoding:
-          type: csv
+          encoding:
+            type: csv
         schema:
           upstream_ip: string
           upstream_pod_name: string
