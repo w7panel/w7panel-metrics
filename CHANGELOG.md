@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 修复个别请求 enrichment lookup 未命中导致 Apps 完全无数据的问题。即使 Pod/Service 映射暂时缺失，只要访问日志包含有效 `upstream_service`，也会回退写入 Service workload 身份；映射命中时仍使用 `w7.cc.app/title` 中文名。
+
 - 流量工作负载 enrichment 增加 `workload_title`。按 `w7.cc.app/title`、`title`、workload 原始名称的顺序持久化展示名，使 Apps 流量排行可显示应用中文名称，并在 Pod 重建或资源删除后保留当时名称。
 
 - 修复工作负载 Service 映射 CSV 为空的问题；现在从已生成的 Pod-to-workload CSV 导出唯一的服务别名，确保无上游 IP 的请求能使用 Service fallback 归属 Apps。

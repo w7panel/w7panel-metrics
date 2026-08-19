@@ -106,6 +106,14 @@ data:
           if (string(workload.workload_name) ?? "") == "" {
             workload = get_enrichment_table_record("services", {"upstream_service": .upstream_service, "upstream_namespace": .upstream_namespace}) ?? {}
           }
+          if (string(workload.workload_name) ?? "") == "" && string(.upstream_service) != "" && string(.upstream_service) != "-" {
+            workload = {
+              "workload_kind": "Service",
+              "workload_name": .upstream_service,
+              "workload_title": .upstream_service,
+              "workload_namespace": .upstream_namespace,
+            }
+          }
           .upstream_pod_name = string(workload.upstream_pod_name) ?? ""
           .workload_kind = string(workload.workload_kind) ?? ""
           .workload_name = string(workload.workload_name) ?? ""
