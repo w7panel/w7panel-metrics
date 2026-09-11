@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- 新增仓库内 `w7panel-metrics-monitoring` Skill，汇总本 Chart 实际采集的指标、标签、PromQL/LogsQL 用法及采集排障路径，便于按统一口径查询监控数据。
+
+- kubelet PVC 容量采集改为默认关闭，避免 kubelet 未暴露卷统计指标时产生不必要的全量 `/metrics` 抓取；需要时可通过 `kubeletVolumeMetrics.enabled=true` 开启。
+
 - 新增 Longhorn 容量采集与 kubelet PVC 容量采集配置：采集卷申请容量、Longhorn 后端实际占用及 PVC 文件系统用量指标。kubelet 未暴露卷统计时不产生数据，待其开启后自动采集。
 
 - 修复 upstream service fallback 的 VRL 可失败条件导致 Vector `normalize` 配置加载失败的问题。此前 higress-log DaemonSet 会进入 CrashLoopBackOff，新 HTTPS 访问无法写入 Apps 统计；现先安全转换 Service 字段再执行 fallback。

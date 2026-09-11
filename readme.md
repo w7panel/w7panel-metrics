@@ -2,7 +2,7 @@
 
 ## 存储容量指标
 
-Chart 默认采集 Longhorn 及 kubelet PVC 容量指标，可分别观察后端实际分配量与卷内文件系统用量。
+Chart 默认采集 Longhorn 容量指标；kubelet PVC 容量采集默认关闭，按需开启后可观察卷内文件系统用量。
 
 | 指标 | 含义 |
 | --- | --- |
@@ -19,7 +19,7 @@ longhornMetrics:
   enabled: true
   namespace: longhorn-system
 kubeletVolumeMetrics:
-  enabled: true
+  enabled: true # 默认关闭；仅在 kubelet 已暴露卷统计时开启
 ```
 
 `kubelet_volume_stats_*` 仅在 kubelet 暴露卷统计时存在；未暴露时对应抓取目标保持正常但不会写入该类时序。
