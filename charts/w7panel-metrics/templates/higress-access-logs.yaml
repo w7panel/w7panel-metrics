@@ -102,15 +102,16 @@ data:
           .upstream_service = if exists(cluster.service) { cluster.service } else { "" }
           .upstream_namespace = if exists(cluster.namespace) { cluster.namespace } else { "" }
           .upstream_ip = split(string(.upstream_host) ?? "", ":")[0]
+          upstream_service_name = string(.upstream_service) ?? ""
           workload = get_enrichment_table_record("workloads", {"upstream_ip": .upstream_ip}) ?? {}
           if (string(workload.workload_name) ?? "") == "" {
             workload = get_enrichment_table_record("services", {"upstream_service": .upstream_service, "upstream_namespace": .upstream_namespace}) ?? {}
           }
-          if (string(workload.workload_name) ?? "") == "" && string(.upstream_service) != "" && string(.upstream_service) != "-" {
+          if (string(workload.workload_name) ?? "") == "" && upstream_service_name != "" && upstream_service_name != "-" {
             workload = {
               "workload_kind": "Service",
-              "workload_name": .upstream_service,
-              "workload_title": .upstream_service,
+              "workload_name": upstream_service_name,
+              "workload_title": upstream_service_name,
               "workload_namespace": .upstream_namespace,
             }
           }

@@ -1,0 +1,30 @@
+{{- if .Values.kubeletVolumeMetrics.enabled }}
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMNodeScrape
+metadata:
+  name: {{ include "w7panel-metrics.fullname" . }}-kubelet-volume
+  labels:
+    {{- include "w7panel-metrics.labels" . | nindent 4 }}
+spec:
+  bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+  honorLabels: true
+  honorTimestamps: false
+  interval: {{ .Values.kubeletVolumeMetrics.interval | quote }}
+  metricRelabelConfigs:
+    - action: keep
+      source_labels: [__name__]
+      regex: 'kubelet_volume_stats_(capacity|used|available)_bytes|kubelet_volume_stats_inodes(_used|_free)?'
+  path: /metrics
+  relabelConfigs:
+    - action: labeldrop
+      regex: __meta_kubernetes_node_label.*
+    - sourceLabels:
+        - __metrics_path__
+      targetLabel: metrics_path
+  scheme: https
+  scrapeTimeout: {{ .Values.kubeletVolumeMetrics.scrapeTimeout | quote }}
+  selector: {}
+  tlsConfig:
+    caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    insecureSkipVerify: true
+{{- end }}

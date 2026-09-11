@@ -1,5 +1,39 @@
 # w7panel-metrics
 
+## 存储容量指标
+
+Chart 默认采集 Longhorn 及 kubelet PVC 容量指标，可分别观察后端实际分配量与卷内文件系统用量。
+
+| 指标 | 含义 |
+| --- | --- |
+| `longhorn_volume_capacity_bytes` | Longhorn Volume/PVC 配置容量。 |
+| `longhorn_volume_actual_size_bytes` | Longhorn 后端实际分配的数据量。 |
+| `longhorn_disk_capacity_bytes` / `longhorn_disk_usage_bytes` | Longhorn 磁盘总容量与后端已用量。 |
+| `longhorn_node_storage_capacity_bytes` / `longhorn_node_storage_usage_bytes` | Longhorn 节点存储总量与后端已用量。 |
+| `kubelet_volume_stats_capacity_bytes` / `used_bytes` / `available_bytes` | PVC 文件系统容量、卷内已用和可用空间。 |
+
+可通过 values 控制采集：
+
+```yaml
+longhornMetrics:
+  enabled: true
+  namespace: longhorn-system
+kubeletVolumeMetrics:
+  enabled: true
+```
+
+`kubelet_volume_stats_*` 仅在 kubelet 暴露卷统计时存在；未暴露时对应抓取目标保持正常但不会写入该类时序。
+
+常用容量使用率查询：
+
+```promql
+# Longhorn 后端按 PVC 实际分配比例
+longhorn_volume_actual_size_bytes / longhorn_volume_capacity_bytes
+
+# PVC 文件系统已用比例（按 kubelet 可见的卷）
+kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes
+```
+
 ## Hubble 指标采集
 
 `charts/w7panel-metrics/values.yaml` 中的配置：

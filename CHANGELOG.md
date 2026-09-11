@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- 新增 Longhorn 容量采集与 kubelet PVC 容量采集配置：采集卷申请容量、Longhorn 后端实际占用及 PVC 文件系统用量指标。kubelet 未暴露卷统计时不产生数据，待其开启后自动采集。
+
+- 修复 upstream service fallback 的 VRL 可失败条件导致 Vector `normalize` 配置加载失败的问题。此前 higress-log DaemonSet 会进入 CrashLoopBackOff，新 HTTPS 访问无法写入 Apps 统计；现先安全转换 Service 字段再执行 fallback。
+
 - 修复个别请求 enrichment lookup 未命中导致 Apps 完全无数据的问题。即使 Pod/Service 映射暂时缺失，只要访问日志包含有效 `upstream_service`，也会回退写入 Service workload 身份；映射命中时仍使用 `w7.cc.app/title` 中文名。
 
 - 流量工作负载 enrichment 增加 `workload_title`。按 `w7.cc.app/title`、`title`、workload 原始名称的顺序持久化展示名，使 Apps 流量排行可显示应用中文名称，并在 Pod 重建或资源删除后保留当时名称。

@@ -1,0 +1,25 @@
+{{- if .Values.longhornMetrics.enabled }}
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: {{ include "w7panel-metrics.fullname" . }}-longhorn
+  labels:
+    {{- include "w7panel-metrics.labels" . | nindent 4 }}
+spec:
+  endpoints:
+    - port: {{ .Values.longhornMetrics.port | quote }}
+      path: /metrics
+      interval: {{ .Values.longhornMetrics.interval | quote }}
+      scrapeTimeout: {{ .Values.longhornMetrics.scrapeTimeout | quote }}
+      metricRelabelConfigs:
+        - action: keep
+          source_labels: [__name__]
+          regex: 'longhorn_(volume_(capacity|actual_size)_bytes|(disk|node_storage)_(capacity|usage|scheduled|reservation)_bytes)'
+  jobLabel: longhorn
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.longhornMetrics.namespace | quote }}
+  selector:
+    matchLabels:
+      {{- toYaml .Values.longhornMetrics.serviceSelector | nindent 6 }}
+{{- end }}
