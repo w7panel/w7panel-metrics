@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 修复 Sysbox CKM 内 node-exporter 因根目录不是 shared/slave 挂载而无法生成容器规格的问题：根 Chart 默认不为 /host/root 请求挂载传播，使采集 Pod 能启动；此前该错误会让 node-exporter DaemonSet 持续不就绪。
+
 - 新增仓库内 `w7panel-metrics-monitoring` Skill，汇总本 Chart 实际采集的指标、标签、PromQL/LogsQL 用法及采集排障路径，便于按统一口径查询监控数据。
 
 - kubelet PVC 容量采集改为默认关闭，避免 kubelet 未暴露卷统计指标时产生不必要的全量 `/metrics` 抓取；需要时可通过 `kubeletVolumeMetrics.enabled=true` 开启。
