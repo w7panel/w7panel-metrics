@@ -1,14 +1,13 @@
 <template>
   <section class="page">
     <div class="page-heading">
-      <div><h1>监控插件</h1><p>从制品库安装和管理独立监控应用</p></div>
       <a-space>
+        <a-button :loading="loading" @click="refresh" type="primary">刷新</a-button>
         <a-input-search v-model="keyword" allow-clear placeholder="搜索插件名称" style="width:260px" />
-        <a-button :loading="loading" @click="refresh">刷新</a-button>
       </a-space>
     </div>
     <a-alert v-if="error" type="error" show-icon>{{ error }}</a-alert>
-    <section class="card plugin-panel">
+    <section class="plugin-panel">
       <div class="plugin-list">
         <div v-if="filteredRows.length" class="plugin-category">
         <button type="button" class="plugin-category__title" :aria-expanded="!collapsed" @click="collapsed = !collapsed"><span class="category-label"><icon-right v-if="collapsed" /><icon-down v-else />监控插件</span><span class="plugin-category__count">{{ filteredRows.length }} 个插件</span></button>
@@ -101,7 +100,7 @@ onMounted(refresh)
 </script>
 
 <style scoped>
-.plugin-panel{padding:20px}
+.plugin-panel{padding:20px;background-color: #fff;}
 .plugin-list{overflow:hidden;border:1px solid var(--color-border-2);border-radius:4px;background:var(--color-bg-2)}
 .plugin-category__title{display:flex;align-items:center;justify-content:space-between;width:100%;height:44px;padding:0 16px;border:0;background:var(--color-primary-light-1);color:rgb(var(--primary-6));box-shadow:inset 3px 0 0 rgb(var(--primary-6));font-size:14px;font-weight:500;text-align:left;cursor:pointer}
 .plugin-category__title[aria-expanded="false"]{background:var(--color-bg-2);color:var(--color-text-1);box-shadow:none}

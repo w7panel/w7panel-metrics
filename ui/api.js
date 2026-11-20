@@ -1,4 +1,11 @@
-const props = () => window.__POWERED_BY_WUJIE__ ? window.$wujie?.props || {} : window.microData?.cd || {}
+import { createDevPreview } from './dev-preview.js'
+
+const preview = import.meta.env?.DEV ? createDevPreview() : null
+const props = () => window.__POWERED_BY_WUJIE__ ? window.$wujie?.props || {} : window.microData?.cd || preview || {}
+
+export function isDevPreview() {
+  return Boolean(preview && !window.__POWERED_BY_WUJIE__ && !window.microData?.cd)
+}
 
 async function payload(response) {
   const body = await response.json().catch(() => null)
@@ -25,6 +32,7 @@ export function pluginMenuUrl(group) { return `/appgroup/${encodeURIComponent(gr
 export function normalizeIdentify(value) { return String(value || '').trim().toLowerCase().replaceAll('_', '-') }
 
 export async function loadMarketPlugins() {
+  if (isDevPreview()) return structuredClone(preview.marketPlugins)
   const response = await fetch('https://zm.w7.com/zpk-market/formula/list', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
