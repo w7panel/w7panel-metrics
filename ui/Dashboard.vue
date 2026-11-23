@@ -1,12 +1,12 @@
 <template>
-  <section class="page dashboard-page" aria-label="监控大屏" :aria-busy="loading">
+  <section class="dashboard-page" aria-label="监控大屏" :aria-busy="loading">
     <a-alert v-if="error" type="error" show-icon>{{ error }}</a-alert>
     <a-spin :loading="loading" class="dashboard-loading">
       <div class="dashboard-content">
         <div class="overview-layout">
-          <section class="dashboard-panel" aria-labelledby="overview-title">
+          <section class="dashboard-panel overview-panel" aria-labelledby="overview-title">
             <div class="panel-heading">
-              <h1 id="overview-title" class="panel-title">概览</h1>
+              <div id="overview-title" class="panel-title">概览</div>
               <a-button size="small" :loading="loading" @click="refresh">
                 <template #icon><icon-refresh /></template>
                 刷新
@@ -14,7 +14,7 @@
             </div>
             <div class="overview-stats">
               <article v-for="item in overviewItems" :key="item.label" class="overview-item">
-                <div class="overview-icon" aria-hidden="true"><component :is="item.icon" /></div>
+                <div class="overview-icon" aria-hidden="true"><OverviewIcon :name="item.icon" /></div>
                 <div class="overview-value">
                   <span>{{ item.label }}</span>
                   <div><strong>{{ item.value }}</strong><span class="overview-unit">{{ item.unit }}</span></div>
@@ -22,8 +22,8 @@
               </article>
             </div>
           </section>
-          <section class="dashboard-panel" aria-labelledby="cluster-title">
-            <div class="panel-heading"><h2 id="cluster-title" class="panel-title">集群信息</h2></div>
+          <section class="dashboard-panel cluster-panel" aria-labelledby="cluster-title">
+            <div class="panel-heading"><div id="cluster-title" class="panel-title">集群信息</div></div>
             <dl class="cluster-info">
               <div><dt>就绪节点</dt><dd><span class="status-dot status-ready" />{{ readyNodes }} / {{ nodes.length }} 个</dd></div>
               <div><dt>未就绪节点</dt><dd :class="{ 'status-warning': nodes.length > readyNodes }">{{ nodes.length - readyNodes }} 个</dd></div>
@@ -33,15 +33,15 @@
           </section>
         </div>
 
-        <section class="dashboard-panel" aria-labelledby="resources-title">
-          <div class="panel-heading"><h2 id="resources-title" class="panel-title">资源状态</h2></div>
+        <section class="dashboard-panel resource-panel" aria-labelledby="resources-title">
+          <div class="panel-heading"><div id="resources-title" class="panel-title">资源状态</div></div>
           <div class="resource-grid">
             <article v-for="item in resourceItems" :key="item.label" class="resource-item">
               <div class="resource-chart">
                 <div class="resource-ring" role="img" :aria-label="`${item.label} ${percent(item.ratio)}`">
-                  <svg viewBox="0 0 160 160" aria-hidden="true">
-                    <circle class="ring-track" cx="80" cy="80" r="70" />
-                    <circle class="ring-value" cx="80" cy="80" r="70" pathLength="100" :stroke-dasharray="`${progressValue(item.ratio)} 100`" transform="rotate(-90 80 80)" />
+                  <svg viewBox="0 0 150 150" aria-hidden="true">
+                    <circle class="ring-track" cx="75" cy="75" r="67.5" />
+                    <circle class="ring-value" cx="75" cy="75" r="67.5" pathLength="100" :stroke-dasharray="`${progressValue(item.ratio)} 100`" transform="rotate(-90 75 75)" />
                   </svg>
                   <span class="ring-percent">{{ percent(item.ratio) }}</span>
                 </div>
@@ -57,7 +57,7 @@
 
         <div class="workload-grid">
           <section class="dashboard-panel" aria-labelledby="pods-title">
-            <div class="panel-heading"><h2 id="pods-title" class="panel-title">Pod 状态</h2><span class="panel-note">共 {{ pods.length }} 个</span></div>
+            <div class="panel-heading"><div id="pods-title" class="panel-title">Pod 状态</div><span class="panel-note">共 {{ pods.length }} 个</span></div>
             <div v-if="pods.length" class="phase-list">
               <div v-for="phase in podPhases" :key="phase.name" class="phase-row">
                 <span class="phase-label"><i class="status-dot" :style="{ background: phase.color }" />{{ phase.name }}</span>
@@ -68,7 +68,7 @@
             <a-empty v-else description="暂无 Pod 数据" />
           </section>
           <section class="dashboard-panel" aria-labelledby="namespaces-title">
-            <div class="panel-heading"><h2 id="namespaces-title" class="panel-title">Pod 数最多的命名空间</h2><span class="panel-note">前 5 名</span></div>
+            <div class="panel-heading"><div id="namespaces-title" class="panel-title">Pod 数最多的命名空间</div><span class="panel-note">前 5 名</span></div>
             <a-empty v-if="!namespaceRows.length" description="暂无 Pod 数据" />
             <div v-else class="namespace-list">
               <div v-for="(item, index) in namespaceRows" :key="item.name" class="namespace-row">
@@ -81,7 +81,7 @@
         </div>
 
         <section class="dashboard-panel node-panel" aria-labelledby="nodes-title">
-          <div class="panel-heading"><h2 id="nodes-title" class="panel-title">节点状态</h2><span class="panel-note">共 {{ nodes.length }} 个</span></div>
+          <div class="panel-heading"><div id="nodes-title" class="panel-title">节点状态</div><span class="panel-note">共 {{ nodes.length }} 个</span></div>
           <a-empty v-if="!nodes.length" description="暂无节点数据" />
           <a-table v-else :data="nodes" :pagination="false" :bordered="false" :scroll="{ x: 680 }" row-key="metadata.name">
             <template #columns>
@@ -100,6 +100,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { k8sGet, panelGet } from './api'
+import OverviewIcon from './OverviewIcon.vue'
 
 const nodes = ref([]), pods = ref([]), usage = ref(null), loading = ref(false), error = ref('')
 const isReady = node => node.status?.conditions?.some(item => item.type === 'Ready' && item.status === 'True')
@@ -124,8 +125,8 @@ const namespaceCounts = computed(() => {
 })
 const namespaceRows = computed(() => [...namespaceCounts.value].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 5))
 const overviewItems = computed(() => [
-  { label: '节点', value: nodes.value.length, unit: '个', icon: 'icon-common' },
-  { label: 'Pod', value: pods.value.length, unit: '个', icon: 'icon-apps' },
+  { label: '节点', value: nodes.value.length, unit: '个', icon: 'node' },
+  { label: 'Pod', value: pods.value.length, unit: '个', icon: 'pod' },
   { label: '活跃命名空间', value: namespaceCounts.value.size, unit: '个', icon: 'icon-folder' },
   { label: '容器重启', value: restartCount.value, unit: '次', icon: 'icon-sync' },
 ])
@@ -162,41 +163,48 @@ onMounted(refresh)
 </script>
 
 <style scoped>
-.dashboard-page{color:var(--color-text-1)}
+.dashboard-page{min-height:100vh;padding:20px;background:var(--color-fill-2);color:var(--color-text-1)}
+.dashboard-page>.arco-alert{margin-bottom:20px}
 .dashboard-loading{display:block;width:100%}
 .dashboard-content{display:flex;flex-direction:column;gap:20px;min-width:0}
-.overview-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px}
+.overview-layout{display:flex;gap:20px;min-width:0}
 .dashboard-panel{min-width:0;padding:20px;background:var(--color-bg-2)}
-.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:28px;margin-bottom:20px}
-.panel-title{margin:0;border-left:3px solid rgb(var(--arcoblue-5));padding-left:10px;font-size:16px;font-weight:500;line-height:20px}
+.overview-panel{flex:1}
+.cluster-panel{flex:0 0 400px;width:400px}
+.panel-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px}
+.panel-title{margin:0;border-left:3px solid rgb(var(--arcoblue-5));padding-left:10px;font-size:16px;font-weight:400;line-height:1.5715}
 .panel-note{flex-shrink:0;color:var(--color-text-3);font-size:12px}
-.overview-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,224px),1fr));gap:16px;padding:10px 0}
-.overview-item{display:flex;align-items:center;justify-content:flex-start;gap:50px;min-width:0;padding:20px;border-radius:6px;background:var(--color-fill-2)}
+.overview-stats{display:flex;flex-wrap:wrap;align-content:flex-start}
+.overview-item{display:flex;flex:1;align-items:center;justify-content:flex-start;gap:30px;min-width:max-content;margin:10px;padding:20px;border-radius:6px;background:var(--color-neutral-2);white-space:nowrap}
 .overview-icon{display:flex;flex-shrink:0;align-items:center;justify-content:center;width:50px;height:50px;border:2px solid var(--color-neutral-4);border-radius:50%;outline:2px solid var(--color-neutral-1);color:var(--color-text-2);font-size:24px}
-.overview-value{display:flex;flex:none;flex-direction:column;align-items:center;gap:16px;width:max-content;font-size:14px;text-align:center;white-space:nowrap}
-.overview-value strong{color:rgb(var(--arcoblue-7));font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
-.overview-unit{margin-left:4px;font-size:13px}
+.overview-value{display:flex;flex:none;flex-direction:column;align-items:center;gap:20px;width:max-content;font-size:14px;text-align:center;white-space:nowrap}
+.overview-value strong{color:rgb(var(--arcoblue-7));font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.overview-unit{margin-left:4px;font-size:14px}
 .cluster-info,.resource-details{margin:0;font-size:14px}
-.cluster-info{display:grid;gap:14px;padding-top:6px}
+.cluster-info{display:grid;gap:0}
+.cluster-info>div{min-height:32px}
 .cluster-info>div,.resource-details>div{display:flex;align-items:center;gap:20px}
-.cluster-info dt,.resource-details dt{color:var(--color-text-3);white-space:nowrap}
+.cluster-info dt,.resource-details dt{color:var(--color-text-2);white-space:nowrap}
 .cluster-info dt{width:80px}
 .cluster-info dd,.resource-details dd{margin:0;color:var(--color-text-2);font-variant-numeric:tabular-nums}
 .status-dot{display:inline-block;flex-shrink:0;width:6px;height:6px;margin-right:8px;border-radius:50%;vertical-align:middle}
 .status-ready{background:rgb(var(--green-6))}
 .cluster-info .status-warning{color:rgb(var(--orange-6))}
-.resource-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:0 20px}
-.resource-item{display:flex;align-items:center;justify-content:center;gap:36px;min-width:0;padding:10px 20px}
-.resource-item+.resource-item{border-left:1px solid var(--color-border-1)}
+.resource-panel>.panel-heading{margin-bottom:10px}
+.resource-grid{display:flex;flex-wrap:wrap;align-content:flex-start}
+.resource-item{display:flex;flex:1;align-items:flex-start;justify-content:flex-start;gap:10px;min-width:max-content;padding:10px 10px 10px 30px}
 .resource-chart{flex-shrink:0;text-align:center}
-.resource-chart h3{margin:16px 0 0;font-size:14px;font-weight:400}
+.resource-chart h3{margin:20px 0 0;font-size:14px;font-weight:400;line-height:1.5715}
 .resource-ring{position:relative;width:150px;height:150px}
-.resource-ring svg{display:block;width:100%;height:100%;fill:none;stroke-width:6}
-.ring-track{stroke:var(--color-fill-2)}
+.resource-ring svg{display:block;width:100%;height:100%;fill:none;stroke-width:10}
+.ring-track{stroke:var(--color-border-2)}
 .ring-value{stroke:rgb(var(--primary-6))}
-.ring-percent{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--color-text-3);font-size:20px;font-variant-numeric:tabular-nums}
-.resource-details{display:grid;gap:16px;padding-bottom:30px}
-.resource-details dd{white-space:nowrap}
+.ring-percent{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#979797;font-size:14px;font-variant-numeric:tabular-nums}
+.resource-details{display:grid;grid-template-columns:max-content max-content;align-content:center;height:160px}
+.resource-details>div{display:contents}
+.resource-details dt,.resource-details dd{min-height:20px;padding:4px 6px;line-height:20px;white-space:nowrap}
+.resource-details dt{color:#979797;text-align:right}
+.resource-details dd{color:var(--color-text-1)}
 .workload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
 .phase-list{display:grid;gap:21px;padding:8px 0}
 .phase-row{display:grid;grid-template-columns:76px minmax(0,1fr) 36px;align-items:center;gap:16px;font-size:13px}
@@ -213,9 +221,7 @@ onMounted(refresh)
 .node-name{font-weight:500;overflow-wrap:anywhere}
 .node-detail{margin-top:4px;font-size:12px}
 .node-panel :deep(.arco-table-th){background:var(--color-fill-1)}
-@media(max-width:1440px){.overview-layout{grid-template-columns:minmax(0,1fr) 300px}.overview-stats{gap:12px}.overview-icon{width:40px;height:40px;font-size:22px}}
-@media(max-width:1200px){.overview-layout{grid-template-columns:1fr}.cluster-info{grid-template-columns:repeat(2,minmax(0,1fr));padding-top:0}.overview-icon{width:50px;height:50px;font-size:24px}}
-@media(max-width:900px){.resource-grid{padding:0}.resource-item{gap:16px;padding:10px}.resource-details>div{gap:12px}}
-@media(max-width:700px){.workload-grid,.resource-grid{grid-template-columns:1fr}.resource-item{justify-content:flex-start;gap:32px;padding:16px 10px}.resource-item+.resource-item{border-left:0;border-top:1px solid var(--color-border-1)}.resource-chart h3{margin-top:10px}.resource-details{padding-bottom:24px}}
-@media(max-width:550px){.dashboard-panel{padding:16px}.overview-stats{padding:0;gap:12px}.overview-item{padding:16px 8px}.overview-icon{width:36px;height:36px;font-size:20px}.overview-value{font-size:12px;gap:12px}.cluster-info{grid-template-columns:1fr}.resource-item{justify-content:center;gap:16px;padding:16px 0}.resource-ring{width:120px;height:120px}.panel-heading{gap:8px}.panel-title{font-size:15px}.phase-row{gap:12px}}
+@media(max-width:900px){.overview-layout{flex-direction:column}.overview-panel{flex:none}.cluster-panel{flex:none;width:100%}}
+@media(max-width:700px){.workload-grid{grid-template-columns:1fr}}
+@media(max-width:550px){.resource-item{min-width:0;flex-basis:100%;flex-direction:column;align-items:center;padding:10px}.resource-details{height:auto}}
 </style>
