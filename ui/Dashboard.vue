@@ -35,8 +35,9 @@
 
         <section class="dashboard-panel resource-panel" aria-labelledby="resources-title">
           <div class="panel-heading"><div id="resources-title" class="panel-title">资源状态</div></div>
+          <a-alert v-if="nodeMetricsError" type="warning">节点指标读取失败：{{ nodeMetricsError }}</a-alert>
           <div class="resource-grid">
-            <article v-for="item in resourceItems" :key="item.label" class="resource-item">
+            <article v-for="item in resourceItems" :key="item.key" class="resource-item">
               <div class="resource-chart">
                 <div class="resource-ring" role="img" :aria-label="`${item.label} ${percent(item.ratio)}`">
                   <svg viewBox="0 0 150 150" aria-hidden="true">
@@ -46,11 +47,24 @@
                   <span class="ring-percent">{{ percent(item.ratio) }}</span>
                 </div>
                 <h3>{{ item.label }}</h3>
+                <dl class="resource-details">
+                  <div><dt>已使用</dt><dd>{{ item.used }}</dd></div>
+                  <div><dt>总量</dt><dd>{{ item.total }}</dd></div>
+                </dl>
               </div>
-              <dl class="resource-details">
-                <div><dt>已使用</dt><dd>{{ item.used }}</dd></div>
-                <div><dt>总量</dt><dd>{{ item.total }}</dd></div>
-              </dl>
+              <div class="resource-ranking" role="region" :aria-label="`${item.rankingLabel}节点前五名`">
+                <div class="resource-ranking-title">节点用量前 5 名</div>
+                <a-empty v-if="!item.nodes.length" :description="nodeMetricsError ? '节点指标暂不可用' : '暂无节点资源指标'" />
+                <ol v-else class="resource-rank-list">
+                  <li v-for="(node, index) in item.nodes" :key="node.key" class="resource-rank-row">
+                    <div class="resource-rank-meta">
+                      <span class="resource-rank-number">{{ index + 1 }}</span>
+                      <span class="resource-rank-name" :title="node.name">{{ node.name }}</span>
+                      <span class="resource-rank-value">{{ item.formatter(node.value) }}</span>
+                    </div>
+                  </li>
+                </ol>
+              </div>
             </article>
           </div>
         </section>
@@ -82,16 +96,24 @@
 
         <section class="dashboard-panel node-panel" aria-labelledby="nodes-title">
           <div class="panel-heading"><div id="nodes-title" class="panel-title">节点状态</div><span class="panel-note">共 {{ nodes.length }} 个</span></div>
+          <a-alert v-if="nodeMetricsError" type="warning">节点指标读取失败：{{ nodeMetricsError }}</a-alert>
+          <a-alert v-if="nodeHistoryError" type="warning">节点趋势读取失败：{{ nodeHistoryError }}</a-alert>
           <a-empty v-if="!nodes.length" description="暂无节点数据" />
-          <a-table v-else :data="nodes" :pagination="false" :bordered="false" :scroll="{ x: 680 }" row-key="metadata.name">
+          <a-table v-else :data="nodeStatusRows" :pagination="false" :bordered="false" :scroll="{ x: 1620 }" row-key="metadata.name">
             <template #columns>
-              <a-table-column title="节点"><template #cell="{ record }"><b class="node-name">{{ record.metadata.name }}</b><div class="muted node-detail">{{ nodeAddress(record) }}</div></template></a-table-column>
-              <a-table-column title="状态" :width="110"><template #cell="{ record }"><a-tag :color="isReady(record) ? 'green' : 'red'">{{ isReady(record) ? '就绪' : '未就绪' }}</a-tag></template></a-table-column>
-              <a-table-column title="角色" :width="120"><template #cell="{ record }">{{ nodeRole(record) }}</template></a-table-column>
+              <a-table-column title="节点" :width="190" fixed="left"><template #cell="{ record }"><b class="node-name">{{ record.metadata.name }}</b><div class="muted node-detail">{{ nodeAddress(record) }}</div></template></a-table-column>
+              <a-table-column title="状态" :width="100"><template #cell="{ record }"><a-tag :color="isReady(record) ? 'green' : 'red'">{{ isReady(record) ? '就绪' : '未就绪' }}</a-tag></template></a-table-column>
+              <a-table-column title="角色" :width="100"><template #cell="{ record }">{{ nodeRole(record) }}</template></a-table-column>
+              <a-table-column title="CPU 用量 / 趋势" :width="230"><template #cell="{ record }"><div class="node-usage-cell"><span>{{ cpuAmount(record.metrics.cpuUsed) }}</span><MetricTrend v-if="isReady(record)" :points="record.history.cpuUsed || []" :start="nodeHistoryBounds.start" :end="nodeHistoryBounds.end" :formatter="cpuAmount" :label="`${record.metadata.name} CPU 用量`" compact /></div></template></a-table-column>
+              <a-table-column title="内存用量 / 趋势" :width="240"><template #cell="{ record }"><div class="node-usage-cell"><span>{{ formatBytes(record.metrics.memoryUsed) }}</span><MetricTrend v-if="isReady(record)" :points="record.history.memoryUsed || []" :start="nodeHistoryBounds.start" :end="nodeHistoryBounds.end" :formatter="formatBytes" :label="`${record.metadata.name} 内存用量`" compact /></div></template></a-table-column>
+              <a-table-column title="磁盘读取 / 写入" :width="170"><template #cell="{ record }"><div>{{ formatRate(record.metrics.diskRead) }}</div><div class="muted node-detail">{{ formatRate(record.metrics.diskWrite) }}</div></template></a-table-column>
+              <a-table-column title="I/O 平均耗时" :width="140"><template #cell="{ record }">{{ formatNumber(record.metrics.ioLatency, ' ms') }}</template></a-table-column>
+              <a-table-column title="网络接收 / 发送" :width="170"><template #cell="{ record }"><div>{{ formatRate(record.metrics.networkReceive) }}</div><div class="muted node-detail">{{ formatRate(record.metrics.networkTransmit) }}</div></template></a-table-column>
               <a-table-column title="Kubelet 版本" :width="150"><template #cell="{ record }">{{ record.status?.nodeInfo?.kubeletVersion || '—' }}</template></a-table-column>
             </template>
           </a-table>
         </section>
+        <DashboardMetrics :nodes="nodes" :pods="pods" :pods-available="podsAvailable" :refresh-id="refreshId" />
       </div>
     </a-spin>
   </section>
@@ -101,8 +123,14 @@
 import { computed, onMounted, ref } from 'vue'
 import { k8sGet, panelGet } from './api'
 import OverviewIcon from './OverviewIcon.vue'
+import DashboardMetrics from './DashboardMetrics.vue'
+import MetricTrend from './MetricTrend.vue'
+import { extractSeries, formatBytes, formatNumber, formatRate, nodeRows, queryPath, rangeBounds } from './monitoring.js'
 
 const nodes = ref([]), pods = ref([]), usage = ref(null), loading = ref(false), error = ref('')
+const nodeMetrics = ref([]), nodeMetricsEnd = ref(0), nodeMetricsError = ref('')
+const nodeHistory = ref([]), nodeHistoryError = ref(''), nodeHistoryBounds = ref(rangeBounds(Math.floor(Date.now() / 1000), 3600))
+const refreshId = ref(0), podsAvailable = ref(false)
 const isReady = node => node.status?.conditions?.some(item => item.type === 'Ready' && item.status === 'True')
 const readyNodes = computed(() => nodes.value.filter(isReady).length)
 const runningPods = computed(() => pods.value.filter(item => item.status?.phase === 'Running').length)
@@ -130,11 +158,24 @@ const overviewItems = computed(() => [
   { label: '活跃命名空间', value: namespaceCounts.value.size, unit: '个', icon: 'icon-folder' },
   { label: '容器重启', value: restartCount.value, unit: '次', icon: 'icon-sync' },
 ])
-const cpu = computed(() => Number(usage.value?.cpu?.usage || 0) / Number(usage.value?.cpu?.total || 0))
-const memory = computed(() => Number(usage.value?.memory?.usage || 0) / Number(usage.value?.memory?.total || 0))
+const cpu = computed(() => usage.value?.cpu?.usage != null && usage.value?.cpu?.total > 0 ? usage.value.cpu.usage / usage.value.cpu.total : NaN)
+const memory = computed(() => usage.value?.memory?.usage != null && usage.value?.memory?.total > 0 ? usage.value.memory.usage / usage.value.memory.total : NaN)
+const nodeResourceRows = computed(() => {
+  const names = new Set(nodes.value.map(node => node.metadata.name))
+  return nodeRows(nodeMetrics.value, nodes.value, nodeMetricsEnd.value).filter(row => !names.size || names.has(row.name))
+})
+const nodeStatusRows = computed(() => {
+  const metrics = new Map(nodeResourceRows.value.map(row => [row.name, row]))
+  const history = new Map(nodeRows(nodeHistory.value, nodes.value, nodeHistoryBounds.value.end).map(row => [row.name, row.history]))
+  return nodes.value.map(node => ({ ...node, metrics: metrics.get(node.metadata.name) || {}, history: history.get(node.metadata.name) || {} }))
+})
+const topNodes = metric => nodeResourceRows.value.filter(row => Number.isFinite(row[metric]))
+  .sort((a, b) => b[metric] - a[metric] || a.name.localeCompare(b.name)).slice(0, 5)
+  .map(row => ({ key: row.key, name: row.name, value: row[metric] }))
+const cpuAmount = value => formatNumber(value, ' 核')
 const resourceItems = computed(() => [
-  { label: 'CPU 使用率', ratio: cpu.value, used: `${cores(usage.value?.cpu?.usage)} 核`, total: `${cores(usage.value?.cpu?.total)} 核` },
-  { label: '内存使用率', ratio: memory.value, used: bytes(usage.value?.memory?.usage), total: bytes(usage.value?.memory?.total) },
+  { key: 'cpu', label: 'CPU 使用率', rankingLabel: 'CPU 用量', formatter: cpuAmount, ratio: cpu.value, used: `${cores(usage.value?.cpu?.usage)} 核`, total: `${cores(usage.value?.cpu?.total)} 核`, nodes: topNodes('cpuUsed') },
+  { key: 'memory', label: '内存使用率', rankingLabel: '内存用量', formatter: formatBytes, ratio: memory.value, used: bytes(usage.value?.memory?.usage), total: bytes(usage.value?.memory?.total), nodes: topNodes('memoryUsed') },
 ])
 const percent = value => Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : '—'
 const progressValue = value => Number.isFinite(value) ? Math.max(0, Math.min(100, value * 100)) : 0
@@ -147,23 +188,34 @@ const nodeAddress = node => node.status?.addresses?.find(item => item.type === '
 async function refresh() {
   loading.value = true
   error.value = ''
+  const end = Math.floor(Date.now() / 1000)
   const results = await Promise.allSettled([
     k8sGet('/api/v1/nodes'),
     k8sGet('/api/v1/pods'),
     panelGet('metrics/usage/normal'),
+    panelGet(queryPath('nodes', { end, history: false })).then(extractSeries),
+    panelGet(queryPath('nodes', { end, duration: 3600, history: true })).then(extractSeries),
   ])
   nodes.value = results[0].status === 'fulfilled' ? results[0].value?.items || [] : []
   pods.value = results[1].status === 'fulfilled' ? results[1].value?.items || [] : []
+  podsAvailable.value = results[1].status === 'fulfilled'
   usage.value = results[2].status === 'fulfilled' ? results[2].value : null
-  const failures = results.filter(item => item.status === 'rejected')
+  nodeMetrics.value = results[3].status === 'fulfilled' ? results[3].value : []
+  nodeMetricsEnd.value = end
+  nodeMetricsError.value = results[3].status === 'rejected' ? results[3].reason?.message || '请求失败' : ''
+  nodeHistory.value = results[4].status === 'fulfilled' ? results[4].value : []
+  nodeHistoryError.value = results[4].status === 'rejected' ? results[4].reason?.message || '请求失败' : ''
+  nodeHistoryBounds.value = rangeBounds(end, 3600)
+  const failures = results.slice(0, 3).filter(item => item.status === 'rejected')
   if (failures.length) error.value = failures.map(item => item.reason?.message || '数据读取失败').join('；')
   loading.value = false
+  refreshId.value++
 }
 onMounted(refresh)
 </script>
 
 <style scoped>
-.dashboard-page{min-height:100vh;padding:20px;background:var(--color-fill-2);color:var(--color-text-1)}
+.dashboard-page{color:var(--color-text-1)}
 .dashboard-page>.arco-alert{margin-bottom:20px}
 .dashboard-loading{display:block;width:100%}
 .dashboard-content{display:flex;flex-direction:column;gap:20px;min-width:0}
@@ -191,20 +243,30 @@ onMounted(refresh)
 .status-ready{background:rgb(var(--green-6))}
 .cluster-info .status-warning{color:rgb(var(--orange-6))}
 .resource-panel>.panel-heading{margin-bottom:10px}
-.resource-grid{display:flex;flex-wrap:wrap;align-content:flex-start}
-.resource-item{display:flex;flex:1;align-items:flex-start;justify-content:flex-start;gap:10px;min-width:max-content;padding:10px 10px 10px 30px}
-.resource-chart{flex-shrink:0;text-align:center}
-.resource-chart h3{margin:20px 0 0;font-size:14px;font-weight:400;line-height:1.5715}
-.resource-ring{position:relative;width:150px;height:150px}
+.resource-panel>.arco-alert{margin:16px 0}
+.resource-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px}
+.resource-item{display:flex;align-items:center;gap:20px;min-width:0;padding:10px}
+.resource-chart{flex:0 0 160px;text-align:center}
+.resource-chart h3{margin:16px 0 0;font-size:14px;font-weight:400;line-height:1.5715}
+.resource-ring{position:relative;width:150px;height:150px;margin:0 auto}
 .resource-ring svg{display:block;width:100%;height:100%;fill:none;stroke-width:10}
 .ring-track{stroke:var(--color-border-2)}
 .ring-value{stroke:rgb(var(--primary-6))}
 .ring-percent{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#979797;font-size:14px;font-variant-numeric:tabular-nums}
-.resource-details{display:grid;grid-template-columns:max-content max-content;align-content:center;height:160px}
+.resource-details{display:grid;grid-template-columns:max-content max-content;justify-content:center;margin-top:12px;text-align:left}
 .resource-details>div{display:contents}
 .resource-details dt,.resource-details dd{min-height:20px;padding:4px 6px;line-height:20px;white-space:nowrap}
 .resource-details dt{color:#979797;text-align:right}
 .resource-details dd{color:var(--color-text-1)}
+.resource-ranking{flex:1;min-width:0}
+.resource-ranking-title{margin-bottom:16px;color:var(--color-text-2);font-size:13px}
+.resource-rank-list{display:grid;gap:0;margin:0;padding:0;list-style:none}
+.resource-rank-row{padding:12px 0}
+.resource-rank-row+.resource-rank-row{border-top:1px solid var(--color-border-1)}
+.resource-rank-meta{display:grid;grid-template-columns:16px minmax(0,1fr) max-content;align-items:center;gap:8px;font-size:12px}
+.resource-rank-number{color:var(--color-text-3);font-variant-numeric:tabular-nums}
+.resource-rank-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.resource-rank-value{font-variant-numeric:tabular-nums}
 .workload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
 .phase-list{display:grid;gap:21px;padding:8px 0}
 .phase-row{display:grid;grid-template-columns:76px minmax(0,1fr) 36px;align-items:center;gap:16px;font-size:13px}
@@ -220,8 +282,12 @@ onMounted(refresh)
 .namespace-count{flex-shrink:0;color:var(--color-text-3);font-variant-numeric:tabular-nums}
 .node-name{font-weight:500;overflow-wrap:anywhere}
 .node-detail{margin-top:4px;font-size:12px}
+.node-usage-cell{display:flex;align-items:center;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums}
+.node-usage-cell>span{white-space:nowrap}
+.node-panel>.arco-alert{margin-bottom:16px}
+.node-panel :deep(.arco-scrollbar-track-direction-horizontal){overflow:hidden}
 .node-panel :deep(.arco-table-th){background:var(--color-fill-1)}
-@media(max-width:900px){.overview-layout{flex-direction:column}.overview-panel{flex:none}.cluster-panel{flex:none;width:100%}}
+@media(max-width:900px){.overview-layout{flex-direction:column}.overview-panel{flex:none}.cluster-panel{flex:none;width:100%}.resource-grid{grid-template-columns:1fr}}
 @media(max-width:700px){.workload-grid{grid-template-columns:1fr}}
-@media(max-width:550px){.resource-item{min-width:0;flex-basis:100%;flex-direction:column;align-items:center;padding:10px}.resource-details{height:auto}}
+@media(max-width:550px){.resource-item{gap:16px;padding:10px 0}.resource-chart{flex-basis:110px}.resource-ring{width:110px;height:110px}.resource-details{font-size:12px}.resource-details dt,.resource-details dd{padding:4px 2px}}
 </style>
