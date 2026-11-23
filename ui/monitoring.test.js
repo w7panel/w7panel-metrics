@@ -32,7 +32,7 @@ test('custom history time and sampling do not change current metric snapshots', 
   const histories = requested.filter(params => params.get('start') !== params.get('end'))
   const snapshots = requested.filter(params => params.get('start') === params.get('end'))
   assert.equal(histories.length, 2)
-  assert.equal(snapshots.length, 5)
+  assert.equal(snapshots.length, 4)
   assert.ok(histories.every(params => Number(params.get('end')) <= historyEnd && params.get('step') === '300'))
   assert.ok(snapshots.every(params => Number(params.get('end')) === now))
   assert.equal(currentValue(result.groups.api[0], now), 86)
@@ -46,10 +46,11 @@ test('detail panels omit node queries after node rankings move beside the resour
   const result = await loadMetricGroups(async path => {
     requested.push(new URL(path, 'http://test.local/').searchParams.get('query'))
     return (await (await preview.panelProxy(path)).json()).data
-  }, { end, include: ['pods', 'filesystems', 'volumes', 'api'] })
-  assert.equal(requested.length, 5)
+  }, { end, include: ['pods', 'filesystems', 'api'] })
+  assert.equal(requested.length, 4)
   assert.ok(requested.every(query => !query.includes('node_cpu_seconds_total')))
-  assert.deepEqual(Object.keys(result.groups), ['pods', 'filesystems', 'volumes', 'api'])
+  assert.ok(requested.every(query => !query.includes('kubelet_volume_stats')))
+  assert.deepEqual(Object.keys(result.groups), ['pods', 'filesystems', 'api'])
   assert.deepEqual(Object.keys(result.history), ['api'])
   assert.equal(currentValue(result.groups.api[0], end), 86)
 })
@@ -77,18 +78,17 @@ test('missing, non-finite and stale metrics stay unknown while real zeros remain
 })
 
 test('capacity uses filesystem data and never substitutes backend allocation or missing samples', () => {
-  const labels = { namespace: 'production', persistentvolumeclaim: 'data' }
-  const values = [series('capacity', 100, labels), series('used', 85, labels), series('available', 15, labels), series('inodes', 0.96, labels)]
-  assert.equal(capacityRows(values, [], end, true)[0].ratio, 0.85)
-  assert.equal(pressureColor(capacityRows(values, [], end, true)[0].inodes), 'red')
-  assert.equal(capacityRows([values[0], values[2]], [], end, true)[0].ratio, null)
-  assert.equal(capacityRows([series('capacity', 0, labels), values[1]], [], end, true)[0].ratio, null)
-  assert.equal(capacityRows([values[0], series('used', 0, labels)], [], end, true)[0].ratio, 0)
-  const inodeRisk = { namespace: 'production', persistentvolumeclaim: 'inode-full' }
-  const ranked = capacityRows([...values, series('capacity', 100, inodeRisk), series('used', 10, inodeRisk), series('inodes', 0.99, inodeRisk)], [], end, true)
-  assert.equal(ranked[0].name, 'inode-full')
-  const fs = { instance: '10.0.0.1:9100', device: '/dev/sda1', mountpoint: '/' }
-  assert.equal(capacityRows([series('capacity', 100, fs), series('available', 20, fs)], [], end)[0].ratio, 0.8)
+  const labels = { instance: '10.0.0.1:9100', device: '/dev/sda1', mountpoint: '/' }
+  const values = [series('capacity', 100, labels), series('available', 15, labels), series('inodes', 0.96, labels)]
+  assert.equal(capacityRows(values, [], end)[0].ratio, 0.85)
+  assert.equal(pressureColor(capacityRows(values, [], end)[0].inodes), 'red')
+  assert.equal(capacityRows([values[0], values[2]], [], end)[0].ratio, null)
+  assert.equal(capacityRows([series('capacity', 0, labels), values[1]], [], end)[0].ratio, null)
+  assert.equal(capacityRows([values[0], series('available', 100, labels)], [], end)[0].ratio, 0)
+  assert.equal(capacityRows([values[0], series('available', 0, labels)], [], end)[0].ratio, 1)
+  const inodeRisk = { ...labels, mountpoint: '/data' }
+  const ranked = capacityRows([...values, series('capacity', 100, inodeRisk), series('available', 90, inodeRisk), series('inodes', 0.99, inodeRisk)], [], end)
+  assert.equal(ranked[0].mountpoint, '/data')
 })
 
 test('node address mapping joins metric families to inventory including IPv6', () => {
@@ -178,7 +178,7 @@ test('development preview exercises all query groups with realistic identities a
   const nodes = (await (await preview.k8sproxy('/api/v1/nodes')).json()).data.items
   const pods = (await (await preview.k8sproxy('/api/v1/pods')).json()).data.items
   const query = async (group, duration = 3600) => extractSeries((await (await preview.panelProxy(queryPath(group, { end, duration }))).json()).data)
-  const [nodeSeries, podSeries, filesystems, volumes, api] = await Promise.all(['nodes', 'pods', 'filesystems', 'volumes', 'api'].map(group => query(group)))
+  const [nodeSeries, podSeries, filesystems, api] = await Promise.all(['nodes', 'pods', 'filesystems', 'api'].map(group => query(group)))
   assert.equal(nodeRows(nodeSeries, nodes, end).length, 8)
   assert.equal(nodeRows(nodeSeries, nodes, end).find(row => row.name === 'demo-worker-07').cpu, null)
   const podStatusRows = podRows(podSeries, pods, end)
@@ -187,7 +187,6 @@ test('development preview exercises all query groups with realistic identities a
   assert.equal(podStatusRows[250].status, '已完成')
   assert.equal(podStatusRows[260].status, '失败')
   assert.equal(capacityRows(filesystems, nodes, end).length, 7)
-  assert.equal(capacityRows(volumes, nodes, end, true).find(row => row.name === 'cache-data').ratio, 0)
   assert.equal(api.length, 4)
   assert.equal(api[0].points.length, 61)
   const longer = await query('api', 21600)
@@ -202,11 +201,11 @@ test('snapshots stay current independently of aligned history and a failed group
   const result = await loadMetricGroups(async path => {
     const params = new URL(path, 'http://test.local/').searchParams
     requested.push(params)
-    if (params.get('query').includes('kubelet_volume_stats')) throw new Error('volume collection denied')
+    if (params.get('query').includes('node_filesystem')) throw new Error('filesystem collection denied')
     return (await (await preview.panelProxy(path)).json()).data
   }, { end: now, duration: 86400 })
-  assert.equal(requested.length, 7)
-  assert.equal(result.errors.volumes, 'volume collection denied')
+  assert.equal(requested.length, 6)
+  assert.equal(result.errors.filesystems, 'filesystem collection denied')
   assert.ok(result.groups.pods.length)
   assert.equal(currentValue(result.groups.api[0], now), 86)
   assert.equal(currentValue(result.groups.nodes[0], now), 0.2)

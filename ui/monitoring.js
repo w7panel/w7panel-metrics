@@ -3,7 +3,6 @@ const disks = 'device!~"loop.*|ram.*|fd.*|sr.*|dm-.*"'
 const interfaces = 'device!~"lo|veth.*|lxc.*|cilium.*|docker.*|br-.*|flannel.*"'
 const filesystems = 'fstype!~"tmpfs|overlay|squashfs|nsfs|rootfs",mountpoint!~"/run($|/.*)|/var/lib/(kubelet|docker)/.*"'
 const containers = 'metrics_path="/metrics/cadvisor",container!="",container!="POD",pod!=""'
-const pvc = 'by (namespace, persistentvolumeclaim)'
 const apiRequests = 'sum(rate(apiserver_request_total[5m]))'
 const apiLatency = 'sum by (le) (rate(apiserver_request_duration_seconds_bucket{verb!~"WATCH|CONNECT"}[5m]))'
 
@@ -34,14 +33,6 @@ export const METRIC_GROUPS = {
       capacity: `max by (instance, node, device, mountpoint) (node_filesystem_size_bytes{${filesystems}} > 0)`,
       available: `max by (instance, node, device, mountpoint) (node_filesystem_avail_bytes{${filesystems}})`,
       inodes: `1 - max by (instance, node, device, mountpoint) (node_filesystem_files_free{${filesystems}}) / (max by (instance, node, device, mountpoint) (node_filesystem_files{${filesystems}}) > 0)`,
-    },
-  },
-  volumes: {
-    queries: {
-      capacity: `max ${pvc} (kubelet_volume_stats_capacity_bytes > 0)`,
-      used: `max ${pvc} (kubelet_volume_stats_used_bytes)`,
-      available: `max ${pvc} (kubelet_volume_stats_available_bytes)`,
-      inodes: `max ${pvc} (kubelet_volume_stats_inodes_used) / (max ${pvc} (kubelet_volume_stats_inodes) > 0)`,
     },
   },
   api: {
@@ -179,16 +170,13 @@ export function podRows(series, pods, end) {
   })
 }
 
-export function capacityRows(series, nodes, end, volumes = false) {
-  return metricRows(series, labels => volumes ? {
-    key: `${labels.namespace}/${labels.persistentvolumeclaim}`, namespace: labels.namespace, name: labels.persistentvolumeclaim,
-  } : {
+export function capacityRows(series, nodes, end) {
+  return metricRows(series, labels => ({
     key: `${nodeName(labels, nodes)}/${labels.device}/${labels.mountpoint}`,
     name: nodeName(labels, nodes), mountpoint: labels.mountpoint, device: labels.device,
-  }, end).map(row => ({
+  }), end).map(row => ({
     ...row,
-    ratio: row.capacity > 0 && (volumes ? row.used != null : row.available != null)
-      ? (volumes ? row.used : row.capacity - row.available) / row.capacity : null,
+    ratio: row.capacity > 0 && row.available != null ? (row.capacity - row.available) / row.capacity : null,
   })).sort((a, b) => Math.max(b.ratio ?? -1, b.inodes ?? -1) - Math.max(a.ratio ?? -1, a.inodes ?? -1))
 }
 

@@ -245,7 +245,7 @@ onMounted(refresh)
 .resource-panel>.panel-heading{margin-bottom:10px}
 .resource-panel>.arco-alert{margin:16px 0}
 .resource-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px}
-.resource-item{display:flex;align-items:center;gap:20px;min-width:0;padding:10px}
+.resource-item{display:flex;align-items:flex-start;gap:20px;min-width:0;padding:10px}
 .resource-chart{flex:0 0 160px;text-align:center}
 .resource-chart h3{margin:16px 0 0;font-size:14px;font-weight:400;line-height:1.5715}
 .resource-ring{position:relative;width:150px;height:150px;margin:0 auto}

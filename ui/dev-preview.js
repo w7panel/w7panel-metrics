@@ -65,13 +65,6 @@ export function createDevPreview() {
       add('available', labels, (index === 0 ? 9 : 130 - index * 10) * gib)
       add('inodes', labels, index === 1 ? 0.96 : 0.1 + index * 0.06)
     })
-    if (group === 'volumes') ['database-data', 'registry-data', 'cache-data'].forEach((name, index) => {
-      const labels = { namespace: index === 1 ? 'default' : 'production', persistentvolumeclaim: name }
-      add('capacity', labels, 100 * gib)
-      add('used', labels, [94, 70, 0][index] * gib)
-      add('available', labels, [6, 30, 100][index] * gib)
-      add('inodes', labels, [0.96, 0.12, 0][index])
-    })
     if (group === 'api') Object.entries({ requests: 86, errors: 0.002, p95: 64, p99: 160 }).forEach(([field, value]) => add(field, {}, value))
     return { resultType: 'matrix', result }
   }
