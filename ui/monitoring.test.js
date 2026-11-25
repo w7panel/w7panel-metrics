@@ -41,16 +41,17 @@ test('custom history time and sampling do not change current metric snapshots', 
   assert.equal(result.history.api[0].points.at(-1)[0], Math.floor(historyEnd / 300) * 300)
 })
 
-test('detail panels omit node queries after node rankings move beside the resource charts', async () => {
+test('disk and API panels omit node and Pod metric queries when abnormal Pods use the inventory', async () => {
   const preview = createDevPreview(), requested = []
   const result = await loadMetricGroups(async path => {
     requested.push(new URL(path, 'http://test.local/').searchParams.get('query'))
     return (await (await preview.panelProxy(path)).json()).data
-  }, { end, include: ['pods', 'filesystems', 'api'] })
-  assert.equal(requested.length, 4)
+  }, { end, include: ['filesystems', 'api'] })
+  assert.equal(requested.length, 3)
   assert.ok(requested.every(query => !query.includes('node_cpu_seconds_total')))
   assert.ok(requested.every(query => !query.includes('kubelet_volume_stats')))
-  assert.deepEqual(Object.keys(result.groups), ['pods', 'filesystems', 'api'])
+  assert.ok(requested.every(query => !query.includes('container_cpu_usage_seconds_total')))
+  assert.deepEqual(Object.keys(result.groups), ['filesystems', 'api'])
   assert.deepEqual(Object.keys(result.history), ['api'])
   assert.equal(currentValue(result.groups.api[0], end), 86)
 })

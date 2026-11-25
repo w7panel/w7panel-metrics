@@ -1,21 +1,5 @@
 <template>
-  <section class="monitoring-details" aria-labelledby="cluster-monitor-title" :aria-busy="loading">
-    <section class="metrics-panel pod-status-panel" aria-labelledby="pod-status-title">
-      <div class="metrics-heading">
-        <div id="pod-status-title">Pod 状态</div>
-      </div>
-      <a-alert v-if="errors.pods" type="warning">Pod 指标读取失败：{{ errors.pods }}</a-alert>
-      <a-empty v-if="!podStatusRows.length" :description="podsAvailable ? '暂无 Pod 数据' : 'Pod 列表读取失败，无法判断运行状态'" />
-      <a-table v-else :data="podStatusRows" :pagination="podPagination" :bordered="false" :scroll="{ x: 1100, y: 560 }" row-key="key">
-        <template #columns>
-          <a-table-column title="Pod" :width="220"><template #cell="{ record }"><b class="metric-name">{{ record.name }}</b><div class="metric-secondary">{{ record.namespace }}</div></template></a-table-column>
-          <a-table-column title="状态" :width="150"><template #cell="{ record }"><a-tag :color="record.statusColor">{{ record.status }}</a-tag></template></a-table-column>
-          <a-table-column title="重启次数" :width="100" data-index="restarts" />
-          <a-table-column title="所在节点" :width="180" data-index="node" />
-        </template>
-      </a-table>
-    </section>
-
+  <div class="monitoring-details" :aria-busy="loading">
     <section class="metrics-panel" aria-labelledby="filesystem-title">
       <div class="metrics-heading"><div id="filesystem-title">节点磁盘容量</div></div>
       <a-alert v-if="errors.filesystems" type="warning">节点磁盘指标读取失败：{{ errors.filesystems }}</a-alert>
@@ -42,16 +26,16 @@
         </article>
       </div>
     </section>
-  </section>
+  </div>
 </template>
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { panelGet } from './api'
 import MetricTrend from './MetricTrend.vue'
-import { capacityRows, currentValue, formatBytes, formatNumber, formatPercent, loadMetricGroups, podRows, pressureColor, rangeBounds, selectedTimeRange } from './monitoring.js'
+import { capacityRows, currentValue, formatBytes, formatNumber, formatPercent, loadMetricGroups, pressureColor, rangeBounds, selectedTimeRange } from './monitoring.js'
 
-const props = defineProps({ nodes: { type: Array, default: () => [] }, pods: { type: Array, default: () => [] }, podsAvailable: Boolean, refreshId: Number })
+const props = defineProps({ nodes: { type: Array, default: () => [] }, refreshId: Number })
 const initialEnd = Date.now()
 const recentRange = (hours, now = Date.now()) => [new Date(now - hours * 3600000), new Date(now)]
 const timeRange = ref(recentRange(1, initialEnd)), historyStep = ref(60), rangeError = ref(''), relativeHours = ref(1)
@@ -59,12 +43,10 @@ const stepOptions = [{ label: '1 分钟', value: 60 }, { label: '5 分钟', valu
 const shortcuts = [1, 6, 24].map(hours => ({ label: `最近 ${hours} 小时`, hours, value: () => recentRange(hours) }))
 const disabledDate = date => { const day = new Date(date).setHours(0, 0, 0, 0), today = new Date().setHours(0, 0, 0, 0); return day > today || day < today - 86400000 }
 const pagination = { pageSize: 5, hideOnSinglePage: true }
-const podPagination = { defaultPageSize: 20, showTotal: true, showPageSize: true, pageSizeOptions: [10, 20, 50, 100], bufferSize: 1, size: 'small', hideOnSinglePage: true }
 const groups = ref({}), histories = ref({}), errors = ref({}), loading = ref(false), snapshotEnd = ref(Math.floor(initialEnd / 1000)), updated = ref(null)
 const bounds = ref(rangeBounds(snapshotEnd.value, 3600, historyStep.value))
 const rangeStart = computed(() => bounds.value.start), rangeEnd = computed(() => bounds.value.end)
 const updatedLabel = computed(() => updated.value ? `更新于 ${updated.value.toLocaleTimeString('zh-CN', { hour12: false })}` : '等待监控数据')
-const podStatusRows = computed(() => podRows(groups.value.pods || [], props.pods, snapshotEnd.value))
 const filesystemRows = computed(() => capacityRows(groups.value.filesystems || [], props.nodes, snapshotEnd.value))
 const apiCards = computed(() => [
   { key: 'requests', label: '请求速率', formatter: value => formatNumber(value, ' 次/s') },
@@ -101,7 +83,7 @@ async function refresh() {
   rangeError.value = ''
   const id = ++requestId, end = Math.floor(Date.now() / 1000), step = historyStep.value
   loading.value = true
-  const result = await loadMetricGroups(panelGet, { end, historyEnd: selection.end, duration: selection.duration, step, include: ['pods', 'filesystems', 'api'] })
+  const result = await loadMetricGroups(panelGet, { end, historyEnd: selection.end, duration: selection.duration, step, include: ['filesystems', 'api'] })
   if (id !== requestId) return
   groups.value = result.groups
   histories.value = result.history
@@ -132,8 +114,6 @@ onBeforeUnmount(() => { requestId++ })
 .metrics-heading>.metrics-note{margin:0}
 .metrics-panel>.arco-alert{margin-bottom:16px}
 .metrics-panel :deep(.arco-table-th){background:var(--color-fill-1)}
-.pod-status-panel :deep(.arco-scrollbar-track-direction-horizontal){overflow:hidden}
-.pod-status-panel :deep(.arco-pagination){flex-wrap:wrap;justify-content:flex-end;row-gap:8px}
 .metric-name{font-weight:500;overflow-wrap:anywhere}
 .metric-secondary{margin-top:4px;color:var(--color-text-3);font-size:12px;overflow-wrap:anywhere}
 .metric-warning{color:rgb(var(--orange-6))}

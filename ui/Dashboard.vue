@@ -23,12 +23,14 @@
             </div>
           </section>
           <section class="dashboard-panel cluster-panel" aria-labelledby="cluster-title">
-            <div class="panel-heading"><div id="cluster-title" class="panel-title">集群信息</div></div>
-            <dl class="cluster-info">
-              <div><dt>就绪节点</dt><dd><span class="status-dot status-ready" />{{ readyNodes }} / {{ nodes.length }} 个</dd></div>
-              <div><dt>未就绪节点</dt><dd :class="{ 'status-warning': nodes.length > readyNodes }">{{ nodes.length - readyNodes }} 个</dd></div>
-              <div><dt>运行中 Pod</dt><dd>{{ runningPods }} / {{ pods.length }} 个</dd></div>
-              <div><dt>等待中 Pod</dt><dd>{{ pendingPods }} 个</dd></div>
+            <div class="panel-heading"><div id="cluster-title" class="panel-title">集群健康</div></div>
+            <dl class="cluster-health">
+              <div v-for="item in healthItems" :key="item.label">
+                <dt>{{ item.label }}</dt>
+                <dd :class="['health-count', item.count == null ? 'health-unknown' : item.count === 0 ? 'health-normal' : `health-${item.level}`]">
+                  {{ item.count ?? '—' }}<span v-if="item.count != null">个</span>
+                </dd>
+              </div>
             </dl>
           </section>
         </div>
@@ -68,6 +70,8 @@
             </article>
           </div>
         </section>
+
+        <DashboardMetrics :nodes="nodes" :refresh-id="refreshId" />
 
         <div class="workload-grid">
           <section class="dashboard-panel" aria-labelledby="pods-title">
@@ -113,7 +117,19 @@
             </template>
           </a-table>
         </section>
-        <DashboardMetrics :nodes="nodes" :pods="pods" :pods-available="podsAvailable" :refresh-id="refreshId" />
+        <section class="dashboard-panel abnormal-pods-panel" aria-labelledby="abnormal-pods-title">
+          <div class="panel-heading"><div id="abnormal-pods-title" class="panel-title">异常 Pod</div><span v-if="podsAvailable" class="panel-note">共 {{ abnormalPodRows.length }} 个</span></div>
+          <a-empty v-if="!podsAvailable" description="Pod 列表读取失败，无法判断异常状态" />
+          <a-empty v-else-if="!abnormalPodRows.length" description="暂无异常 Pod" />
+          <a-table v-else :data="abnormalPodRows" :pagination="{ pageSize: 5, showTotal: true, hideOnSinglePage: true }" :bordered="false" :scroll="{ x: 850 }" row-key="key">
+            <template #columns>
+              <a-table-column title="Pod" :width="220"><template #cell="{ record }"><b class="pod-name">{{ record.name }}</b><div class="muted node-detail">{{ record.namespace }}</div></template></a-table-column>
+              <a-table-column title="异常原因" :width="300"><template #cell="{ record }"><span :class="record.severity > 1 ? 'pod-danger' : 'pod-warning'">{{ record.reasons }}</span></template></a-table-column>
+              <a-table-column title="重启次数" :width="100" data-index="restarts" />
+              <a-table-column title="所在节点" :width="180" data-index="node" />
+            </template>
+          </a-table>
+        </section>
       </div>
     </a-spin>
   </section>
@@ -125,16 +141,21 @@ import { k8sGet, panelGet } from './api'
 import OverviewIcon from './OverviewIcon.vue'
 import DashboardMetrics from './DashboardMetrics.vue'
 import MetricTrend from './MetricTrend.vue'
-import { extractSeries, formatBytes, formatNumber, formatRate, nodeRows, queryPath, rangeBounds } from './monitoring.js'
+import { abnormalPods, extractSeries, formatBytes, formatNumber, formatRate, nodeRows, queryPath, rangeBounds } from './monitoring.js'
 
 const nodes = ref([]), pods = ref([]), usage = ref(null), loading = ref(false), error = ref('')
 const nodeMetrics = ref([]), nodeMetricsEnd = ref(0), nodeMetricsError = ref('')
 const nodeHistory = ref([]), nodeHistoryError = ref(''), nodeHistoryBounds = ref(rangeBounds(Math.floor(Date.now() / 1000), 3600))
-const refreshId = ref(0), podsAvailable = ref(false)
+const refreshId = ref(0), nodesAvailable = ref(false), podsAvailable = ref(false)
+const abnormalPodRows = computed(() => abnormalPods(pods.value))
 const isReady = node => node.status?.conditions?.some(item => item.type === 'Ready' && item.status === 'True')
 const readyNodes = computed(() => nodes.value.filter(isReady).length)
-const runningPods = computed(() => pods.value.filter(item => item.status?.phase === 'Running').length)
 const pendingPods = computed(() => pods.value.filter(item => item.status?.phase === 'Pending').length)
+const healthItems = computed(() => [
+  { label: '未就绪节点', count: nodesAvailable.value ? nodes.value.length - readyNodes.value : null, level: 'danger' },
+  { label: '异常 Pod', count: podsAvailable.value ? abnormalPodRows.value.length : null, level: abnormalPodRows.value.some(pod => pod.severity > 1) ? 'danger' : 'warning' },
+  { label: '等待中 Pod', count: podsAvailable.value ? pendingPods.value : null, level: 'warning' },
+])
 const restartCount = computed(() => pods.value.reduce((total, pod) => total + (pod.status?.containerStatuses || []).reduce((count, container) => count + (container.restartCount || 0), 0), 0))
 const podPhases = computed(() => [
   { name: '运行中', phase: 'Running', color: '#00b42a' },
@@ -197,6 +218,7 @@ async function refresh() {
     panelGet(queryPath('nodes', { end, duration: 3600, history: true })).then(extractSeries),
   ])
   nodes.value = results[0].status === 'fulfilled' ? results[0].value?.items || [] : []
+  nodesAvailable.value = results[0].status === 'fulfilled'
   pods.value = results[1].status === 'fulfilled' ? results[1].value?.items || [] : []
   podsAvailable.value = results[1].status === 'fulfilled'
   usage.value = results[2].status === 'fulfilled' ? results[2].value : null
@@ -222,7 +244,7 @@ onMounted(refresh)
 .overview-layout{display:flex;gap:20px;min-width:0}
 .dashboard-panel{min-width:0;padding:20px;background:var(--color-bg-2)}
 .overview-panel{flex:1}
-.cluster-panel{flex:0 0 400px;width:400px}
+.cluster-panel{flex:0 0 280px;width:280px}
 .panel-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px}
 .panel-title{margin:0;border-left:3px solid rgb(var(--arcoblue-5));padding-left:10px;font-size:16px;font-weight:400;line-height:1.5715}
 .panel-note{flex-shrink:0;color:var(--color-text-3);font-size:12px}
@@ -232,16 +254,19 @@ onMounted(refresh)
 .overview-value{display:flex;flex:none;flex-direction:column;align-items:center;gap:20px;width:max-content;font-size:14px;text-align:center;white-space:nowrap}
 .overview-value strong{color:rgb(var(--arcoblue-7));font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
 .overview-unit{margin-left:4px;font-size:14px}
-.cluster-info,.resource-details{margin:0;font-size:14px}
-.cluster-info{display:grid;gap:0}
-.cluster-info>div{min-height:32px}
-.cluster-info>div,.resource-details>div{display:flex;align-items:center;gap:20px}
-.cluster-info dt,.resource-details dt{color:var(--color-text-2);white-space:nowrap}
-.cluster-info dt{width:80px}
-.cluster-info dd,.resource-details dd{margin:0;color:var(--color-text-2);font-variant-numeric:tabular-nums}
+.cluster-health,.resource-details{margin:0;font-size:14px}
+.cluster-health{display:grid;gap:4px}
+.cluster-health>div{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:36px}
+.cluster-health dt,.resource-details dt{color:var(--color-text-2);white-space:nowrap}
+.cluster-health dd,.resource-details dd{margin:0;color:var(--color-text-2);font-variant-numeric:tabular-nums}
+.cluster-health .health-count{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.health-count strong{font-size:18px;font-weight:600}
+.health-count .status-dot{margin-right:0;background:currentColor}
+.cluster-health .health-normal{color:rgb(var(--green-6))}
+.cluster-health .health-warning{color:rgb(var(--orange-6))}
+.cluster-health .health-danger{color:rgb(var(--red-6))}
+.cluster-health .health-unknown{color:var(--color-text-3)}
 .status-dot{display:inline-block;flex-shrink:0;width:6px;height:6px;margin-right:8px;border-radius:50%;vertical-align:middle}
-.status-ready{background:rgb(var(--green-6))}
-.cluster-info .status-warning{color:rgb(var(--orange-6))}
 .resource-panel>.panel-heading{margin-bottom:10px}
 .resource-panel>.arco-alert{margin:16px 0}
 .resource-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px}
@@ -280,13 +305,16 @@ onMounted(refresh)
 .namespace-row:first-child .namespace-rank{background:var(--color-primary-light-1);color:rgb(var(--primary-6))}
 .namespace-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .namespace-count{flex-shrink:0;color:var(--color-text-3);font-variant-numeric:tabular-nums}
-.node-name{font-weight:500;overflow-wrap:anywhere}
+.node-name,.pod-name{font-weight:500;overflow-wrap:anywhere}
+.pod-warning{color:rgb(var(--orange-6))}
+.pod-danger{color:rgb(var(--red-6))}
+.abnormal-pods-panel :deep(.arco-pagination){flex-wrap:wrap;row-gap:8px}
 .node-detail{margin-top:4px;font-size:12px}
 .node-usage-cell{display:flex;align-items:center;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums}
 .node-usage-cell>span{white-space:nowrap}
 .node-panel>.arco-alert{margin-bottom:16px}
 .node-panel :deep(.arco-scrollbar-track-direction-horizontal){overflow:hidden}
-.node-panel :deep(.arco-table-th){background:var(--color-fill-1)}
+.node-panel :deep(.arco-table-th),.abnormal-pods-panel :deep(.arco-table-th){background:var(--color-fill-1)}
 @media(max-width:900px){.overview-layout{flex-direction:column}.overview-panel{flex:none}.cluster-panel{flex:none;width:100%}.resource-grid{grid-template-columns:1fr}}
 @media(max-width:700px){.workload-grid{grid-template-columns:1fr}}
 @media(max-width:550px){.resource-item{gap:16px;padding:10px 0}.resource-chart{flex-basis:110px}.resource-ring{width:110px;height:110px}.resource-details{font-size:12px}.resource-details dt,.resource-details dd{padding:4px 2px}}
